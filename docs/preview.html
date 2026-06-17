@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap');
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html,body { width:1280px; height:720px; }
+  body {
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    background: radial-gradient(circle at 50% 30%, #2a2f3a 0%, #15171d 60%, #0c0d11 100%);
+    font-family:'Inter',sans-serif;
+    overflow:hidden;
+  }
+
+  .title { color:#E0C430; font-weight:800; font-size:38px; letter-spacing:1px; margin-bottom:4px; }
+  .subtitle { color:#8a90a0; font-weight:500; font-size:17px; margin-bottom:30px; }
+
+  /* ---- CYD device ---- */
+  .device {
+    position:relative;
+    display:flex; align-items:center; justify-content:center;
+    background: linear-gradient(160deg,#1b6b3a 0%, #14552e 100%);
+    border-radius:14px;
+    padding:34px 56px;
+    box-shadow: 0 30px 70px rgba(0,0,0,.6), inset 0 1px 2px rgba(255,255,255,.15);
+  }
+  /* solder mask sheen + silk hints */
+  .device::before {
+    content:""; position:absolute; inset:0; border-radius:14px;
+    background:
+      radial-gradient(circle at 85% 15%, rgba(255,255,255,.10), transparent 40%),
+      repeating-linear-gradient(90deg, rgba(0,0,0,.05) 0 2px, transparent 2px 8px);
+    pointer-events:none;
+  }
+  /* pin header strips */
+  .pins { position:absolute; top:14px; left:0; right:0; height:10px;
+    background:repeating-linear-gradient(90deg,#caa23c 0 6px,#1b6b3a 6px 12px); opacity:.6; }
+  .pins.bottom { top:auto; bottom:14px; }
+
+  .bezel {
+    background:#000; border-radius:6px; padding:10px;
+    box-shadow: inset 0 0 0 2px #2a2a2a, 0 0 0 1px #000;
+  }
+
+  /* ---- 320x240 screen, scaled x2 -> 640x480 ---- */
+  .screen {
+    width:640px; height:480px; background:#000500; position:relative; overflow:hidden;
+    box-shadow: inset 0 0 40px rgba(0,0,0,.6);
+  }
+  .row { width:100%; height:120px; position:relative; display:flex; align-items:center; }
+  .row + .row { border-top:2px solid #606040; }
+
+  /* ---- amber/black countdown rows (Wiener Linien) ---- */
+  .cd { background:#000500; }
+  .cd .line { color:#E0C430; font-weight:800; font-size:48px; width:104px; text-align:left; padding-left:16px; }
+  .cd .dir  { color:#fff; font-weight:700; font-size:26px; flex:1; line-height:1.05; }
+  .cd .min  { color:#E0C430; font-weight:800; font-size:48px; width:120px; text-align:right; padding-right:16px; }
+
+  /* ---- OBB blue clock rows ---- */
+  .ob { background:#0B2E6B; }
+  .ob .line { color:#fff; font-weight:800; font-size:32px; width:192px; text-align:left; padding-left:12px; }
+  .ob .dir  { color:#fff; font-weight:700; font-size:26px; flex:1; line-height:1.05; }
+  .ob .times { width:120px; text-align:right; padding-right:12px; display:flex; flex-direction:column; align-items:flex-end; line-height:1.1; }
+  .ob .plan { color:#B0B8C8; font-weight:600; font-size:22px; }
+  .ob .delay{ color:#F0C030; font-weight:700; font-size:26px; }
+  .ob .single{ color:#fff; font-weight:700; font-size:28px; }
+</style>
+</head>
+<body>
+  <div class="title">Öffi</div>
+  <div class="subtitle">Realtime Wiener Linien + ÖBB departures on the Cheap Yellow Display</div>
+
+  <div class="device">
+    <div class="pins"></div>
+    <div class="pins bottom"></div>
+    <div class="bezel">
+      <div class="screen">
+
+        <div class="row cd">
+          <div class="line">U6</div>
+          <div class="dir">Floridsdorf</div>
+          <div class="min">3</div>
+        </div>
+
+        <div class="row cd">
+          <div class="line">D</div>
+          <div class="dir">Absberggasse</div>
+          <div class="min">7</div>
+        </div>
+
+        <div class="row ob">
+          <div class="line">REX 1</div>
+          <div class="dir">Wien Hbf</div>
+          <div class="times"><span class="single">08:14</span></div>
+        </div>
+
+        <div class="row ob">
+          <div class="line">RJX 65</div>
+          <div class="dir">Salzburg Hbf</div>
+          <div class="times"><span class="plan">08:20</span><span class="delay">08:26</span></div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+</body>
+</html>

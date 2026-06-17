@@ -14,6 +14,8 @@ another transit provider is a small, well-defined job — see [Adding a provider
 > "Öffi" is the Austrian/German colloquial word for public transport
 > (*öffentliche Verkehrsmittel*) — trams, trains, buses, the lot.
 
+![Öffi departure board on the Cheap Yellow Display](docs/preview.png)
+
 ---
 
 ## Hardware
