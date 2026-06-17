@@ -26,7 +26,7 @@ bool httpGetRaw(const String& url, String& out) {
   HTTPClient https;
   https.setTimeout(10000);
   https.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
-  https.setUserAgent("Nahverkehrsanzeige-ESP32/1.0 (+personal departure board)");
+  https.setUserAgent("Oeffi-ESP32/1.0 (+personal departure board)");
   if (!https.begin(client, url)) {
     Serial.printf("[http] begin failed: %s\n", url.c_str());
     return false;

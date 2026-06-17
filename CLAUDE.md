@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project overview
 
-ESP32 firmware for a public-transport departure board ("Nahverkehrsanzeige") running on the **Cheap Yellow Display** (CYD) — a 2.8" ESP32-WROOM all-in-one board sold as "185-ESP32-2.8-HuangBan". Pulls realtime departures from **multiple providers** (Wiener Linien + ÖBB) and shows them on a landscape amber-on-black board. PlatformIO + Arduino + TFT_eSPI + ArduinoJson.
+ESP32 firmware for a public-transport departure board ("Öffi") running on the **Cheap Yellow Display** (CYD) — a 2.8" ESP32-WROOM all-in-one board sold as "185-ESP32-2.8-HuangBan". Pulls realtime departures from **multiple providers** (Wiener Linien + ÖBB) and shows them on a landscape amber-on-black board. PlatformIO + Arduino + TFT_eSPI + ArduinoJson.
 
 Inspired by `coppermilk/wiener_linien_esp32_monitor` (built for the LILYGO T-Display-S3). The display is a clean rewrite for the CYD's 320×240 landscape ST7789 screen.
 

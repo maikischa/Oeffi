@@ -1,4 +1,4 @@
-# Nahverkehrsanzeige
+# Öffi
 
 A real-time public-transport departure board for the **ESP32 "Cheap Yellow Display" (CYD)**.
 It shows the next departures for your stops on the 2.8" screen and refreshes automatically.
@@ -11,7 +11,8 @@ Built-in data providers:
 Both run at once and are merged into one board, sorted by soonest departure. Adding
 another transit provider is a small, well-defined job — see [Adding a provider](#adding-a-provider).
 
-> The name is German for "local transport display".
+> "Öffi" is the Austrian/German colloquial word for public transport
+> (*öffentliche Verkehrsmittel*) — trams, trains, buses, the lot.
 
 ---
 
@@ -41,8 +42,8 @@ you do **not** need to edit TFT_eSPI's `User_Setup.h`.
 
 ```bash
 # 1. Clone
-git clone https://github.com/maikischa/Nahverkehrsanzeige.git
-cd Nahverkehrsanzeige
+git clone https://github.com/maikischa/Oeffi.git
+cd Oeffi
 
 # 2. Create your config from the template and edit it (WiFi + stops)
 cp src/config.example.h src/config.h

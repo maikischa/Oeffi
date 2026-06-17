@@ -1,5 +1,5 @@
 // ----------------------------------------------------------------------------
-//  Nahverkehrsanzeige — ESP32 public-transport departure board.
+//  Öffi — ESP32 public-transport departure board.
 //
 //  Orchestration only: brings up WiFi + NTP, registers the enabled providers,
 //  then periodically fetches, merges and hands departures to the display.
@@ -103,7 +103,7 @@ void fetchAll() {
 // ---------------------------------------------------------------------------
 void setup() {
   Serial.begin(115200);
-  Serial.println("\n[boot] Nahverkehrsanzeige");
+  Serial.println("\n[boot] Oeffi");
 
   displayInit();
   registerSources();

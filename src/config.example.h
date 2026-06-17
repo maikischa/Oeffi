@@ -1,6 +1,6 @@
 #pragma once
 // ============================================================================
-//  Nahverkehrsanzeige — user configuration
+//  Öffi — user configuration
 //  ----------------------------------------------------------------------------
 //  Copy this file to "config.h" (same folder) and fill in your values:
 //
