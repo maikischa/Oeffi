@@ -18,5 +18,11 @@ void displayInit();
 // Show a centred status message (boot / WiFi / errors).
 void displayStatus(const String& msg, StatusKind kind = StatusKind::Info);
 
+// WiFi-provisioning instructions: how to join the setup AP and open the portal.
+// `reason` (optional) is shown as a warning line above the title — used when we
+// drop back into setup because the joined network has no working internet.
+void displaySetupScreen(const String& apName, const String& ip,
+                        const String& reason = "");
+
 // Render the departure board. Rows are drawn per `Departure::style`.
 void displayBoard(const std::vector<Departure>& deps);

@@ -5,6 +5,7 @@
 // ----------------------------------------------------------------------------
 #include "display.h"
 #include <TFT_eSPI.h>
+#include <qrcode.h>
 #include <algorithm>
 #include "config.h"
 
@@ -154,6 +155,85 @@ void displayStatus(const String& msg, StatusKind kind) {
   tft.setTextFont(2);
   tft.setTextColor(kind == StatusKind::Warn ? TFT_RED : COL_AMBER, COL_BG);
   tft.drawString(msg, tft.width() / 2, tft.height() / 2);
+}
+
+// Backslash-escape the WiFi-QR meta chars (\ ; , : ") per the MECARD-style
+// `WIFI:` payload so SSIDs/passwords with them still scan correctly.
+static String qrEscape(const String& s) {
+  String o;
+  o.reserve(s.length() + 4);
+  for (char c : s) {
+    if (c == '\\' || c == ';' || c == ',' || c == ':' || c == '"') o += '\\';
+    o += c;
+  }
+  return o;
+}
+
+// Draw a QR of `text` with the top-left of its white quiet-zone box at (x,y);
+// `scale` = px per module. Returns the box side length in px.
+static int drawQr(const String& text, int x, int y, int scale) {
+  const uint8_t version = 3;  // 29x29 modules; holds ~53 byte chars at ECC_LOW
+  QRCode qr;
+  uint8_t data[qrcode_getBufferSize(version)];
+  qrcode_initText(&qr, data, version, ECC_LOW, text.c_str());
+
+  const int quiet = 2;  // white border (modules) — required for reliable scans
+  const int dim = (qr.size + 2 * quiet) * scale;
+  tft.fillRect(x, y, dim, dim, TFT_WHITE);
+  for (uint8_t my = 0; my < qr.size; my++)
+    for (uint8_t mx = 0; mx < qr.size; mx++)
+      if (qrcode_getModule(&qr, mx, my))
+        tft.fillRect(x + (mx + quiet) * scale, y + (my + quiet) * scale,
+                     scale, scale, TFT_BLACK);
+  return dim;
+}
+
+void displaySetupScreen(const String& apName, const String& ip,
+                        const String& reason) {
+  const int W = tft.width();
+
+  tft.fillScreen(COL_BG);
+
+  // QR (right): "WIFI:" join code for the open setup AP. Scanning it joins the
+  // network; the captive portal then auto-opens the config page.
+  const int scale = 4;
+  const int qDim = (29 + 4) * scale;        // version-3 box side
+  const int qx = W - qDim - 6;
+  const int qy = 8;
+  drawQr("WIFI:T:nopass;S:" + qrEscape(apName) + ";;", qx, qy, scale);
+
+  // Instructions (left column).
+  tft.setTextDatum(TL_DATUM);
+  const int tx = 8;
+
+  tft.setTextFont(4);
+  tft.setTextColor(COL_AMBER, COL_BG);
+  tft.drawString("WiFi Setup", tx, 12);
+
+  tft.setTextFont(2);
+  tft.setTextColor(TFT_WHITE, COL_BG);
+  tft.drawString("Scan QR to join,", tx, 54);
+  tft.drawString("or join WiFi:", tx, 76);
+  tft.setTextFont(4);
+  tft.setTextColor(COL_AMBER, COL_BG);
+  tft.drawString(apName, tx, 98);
+
+  tft.setTextFont(2);
+  tft.setTextColor(TFT_WHITE, COL_BG);
+  tft.drawString("Then open:", tx, 138);
+  tft.setTextColor(COL_AMBER, COL_BG);
+  tft.drawString(ip, tx, 160);
+
+  // Reason (bottom strip, full width) — why we dropped back into setup.
+  if (reason.length()) {
+    tft.setTextDatum(MC_DATUM);
+    tft.setTextFont(2);
+    tft.setTextColor(TFT_RED, COL_BG);
+    tft.drawString(reason, W / 2, 222);
+  }
+
+  tft.setTextDatum(TL_DATUM);
+  tft.setTextFont(2);  // restore default
 }
 
 void displayBoard(const std::vector<Departure>& deps) {

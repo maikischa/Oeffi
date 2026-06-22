@@ -13,6 +13,8 @@
 #include "config.h"
 #include "departures.h"
 #include "display.h"
+#include "settings.h"
+#include "portal.h"
 
 static std::vector<Departure> g_departures;
 static std::vector<DepartureSource*> g_sources;
@@ -36,13 +38,15 @@ void registerSources() {
 }
 
 // ---------------------------------------------------------------------------
-//  WiFi
+//  WiFi — credentials come from the settings store (set via the web portal).
+//  Returns true once connected.
 // ---------------------------------------------------------------------------
-void connectWiFi() {
-  displayStatus("WiFi: " WIFI_SSID, StatusKind::Info);
-  Serial.printf("[wifi] connecting to %s\n", WIFI_SSID);
+bool connectWiFi() {
+  String ssid = wifiSsid();
+  displayStatus("WiFi: " + ssid, StatusKind::Info);
+  Serial.printf("[wifi] connecting to %s\n", ssid.c_str());
   WiFi.mode(WIFI_STA);
-  WiFi.begin(WIFI_SSID, WIFI_PASS);
+  WiFi.begin(ssid.c_str(), wifiPass().c_str());
 
   uint32_t start = millis();
   while (WiFi.status() != WL_CONNECTED && millis() - start < 20000) {
@@ -53,27 +57,48 @@ void connectWiFi() {
 
   if (WiFi.status() == WL_CONNECTED) {
     Serial.printf("[wifi] connected, IP %s\n", WiFi.localIP().toString().c_str());
-  } else {
-    Serial.println("[wifi] FAILED");
-    displayStatus("WiFi failed - check config.h", StatusKind::Warn);
-    delay(3000);
+    return true;
+  }
+  Serial.println("[wifi] FAILED");
+  return false;
+}
+
+// ---------------------------------------------------------------------------
+//  Provisioning — bring up the "Oeffi-Setup" AP + captive portal and spin here
+//  serving it. The portal's save handler reboots the device, so this never
+//  returns; the board comes back up with stored credentials.
+// ---------------------------------------------------------------------------
+void enterProvisioning(const String& reason = "") {
+  Serial.printf("[wifi] starting setup portal%s%s\n",
+                reason.length() ? " -> " : "", reason.c_str());
+  displaySetupScreen("Oeffi-Setup", "192.168.4.1", reason);
+  portalStartSetupAP();
+  for (;;) {
+    portalHandle();
+    delay(5);
   }
 }
 
 // ---------------------------------------------------------------------------
 //  Time (NTP) — providers that report clock times convert them via localtime.
 // ---------------------------------------------------------------------------
-void syncClock() {
+// Returns false if the clock never synced within the timeout — a reliable proxy
+// for "no real internet" (e.g. an open/captive-portal WiFi that associates but
+// blocks NTP and HTTPS until you accept terms in a browser).
+bool syncClock() {
   // Europe/Vienna TZ so mktime()/localtime() match the ÖBB board's local times.
   configTzTime("CET-1CEST,M3.5.0,M10.5.0/3",
                "pool.ntp.org", "time.cloudflare.com");
   Serial.print("[ntp] syncing");
   uint32_t start = millis();
-  while (time(nullptr) < 1700000000 && millis() - start < 10000) {
+  while (time(nullptr) < 1700000000 && millis() - start < 15000) {
     delay(250);
     Serial.print(".");
   }
-  Serial.printf(" epoch=%ld\n", (long)time(nullptr));
+  bool synced = time(nullptr) >= 1700000000;
+  Serial.printf(" epoch=%ld%s\n", (long)time(nullptr),
+                synced ? "" : " (NOT synced)");
+  return synced;
 }
 
 // ---------------------------------------------------------------------------
@@ -81,8 +106,7 @@ void syncClock() {
 // ---------------------------------------------------------------------------
 void fetchAll() {
   if (WiFi.status() != WL_CONNECTED) {
-    connectWiFi();
-    if (WiFi.status() != WL_CONNECTED) return;
+    if (!connectWiFi()) return;  // transient drop; retry next refresh
   }
 
   std::vector<Departure> merged;
@@ -106,16 +130,29 @@ void setup() {
   Serial.println("\n[boot] Oeffi");
 
   displayInit();
+  settingsBegin();
   registerSources();
 
-  connectWiFi();
-  syncClock();
+  // No stored WiFi, or it won't connect -> drop into the setup portal (never
+  // returns; reboots once the user saves credentials).
+  if (!wifiConfigured() || !connectWiFi())
+    enterProvisioning();
+
+  // Associated, but is the internet actually reachable? An open/captive-portal
+  // network lets us join yet blocks NTP/HTTPS. A failed clock sync means no real
+  // internet -> fall back to the setup portal so the user can pick another net.
+  if (!syncClock())
+    enterProvisioning("Kein Internet - anderes Netz waehlen");
+
+  // Connected with working internet: bring up the always-on config server.
+  portalStartConfigServer();
   fetchAll();
   g_lastFetch = millis();
   displayBoard(g_departures);
 }
 
 void loop() {
+  portalHandle();  // keep the config server responsive between fetches
   if (millis() - g_lastFetch >= REFRESH_INTERVAL_MS) {
     fetchAll();
     g_lastFetch = millis();

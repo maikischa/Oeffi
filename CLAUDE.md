@@ -12,9 +12,11 @@ Inspired by `coppermilk/wiener_linien_esp32_monitor` (built for the LILYGO T-Dis
 
 | Layer | Files | Responsibility |
 |---|---|---|
-| **Orchestration** | `main.cpp` | WiFi, NTP, source registry, fetch/merge/sort loop. No TFT or API code. |
+| **Orchestration** | `main.cpp` | WiFi, NTP, source registry, fetch/merge/sort loop, **no-internet → setup fallback**. No TFT or API code. |
 | **Data / providers** | `departures.h` / `.cpp` | `DepartureSource` interface + concrete sources + HTTP/JSON helpers. No display code. |
-| **Display** | `display.h` / `.cpp` | Owns the `TFT_eSPI`, palette, and per-style row renderers. No network code. |
+| **Display** | `display.h` / `.cpp` | Owns the `TFT_eSPI`, palette, per-style row renderers, and the WiFi-setup screen (incl. QR via `ricmoo/QRCode`). No network code. |
+| **Portal** | `portal.h` / `.cpp` | `WebServer` + captive-portal `DNSServer` + mDNS: the `Oeffi-Setup` provisioning AP and the always-on `oeffi.local` config page. Persists via `settings.*`; no display code. |
+| **Settings** | `settings.h` / `.cpp` | Tiny typed key/value store over NVS (`Preferences`, namespace `oeffi`). Holds WiFi creds; seeded from `config.h` so a pre-flashed config still works. |
 
 A provider's `fetch()` appends normalised `Departure` records (`line, towards, countdown, style, planned, actual, delayed`). `main.cpp` calls `fetch()` on each registered source, merges, sorts by `countdown`, and hands the vector to `displayBoard()`.
 
@@ -43,12 +45,15 @@ Implemented sources ([src/departures.cpp](src/departures.cpp)):
 
 ### Data flow
 
-1. `registerSources()` (`main.cpp`) — `#if`-guarded static source instances pushed to `g_sources`.
-2. `connectWiFi()` — joins the 2.4 GHz network from `config.h`.
-3. `syncClock()` — NTP via `configTzTime("CET-1CEST,M3.5.0,M10.5.0/3", ...)` so `mktime()`/`localtime()` match the ÖBB board's Vienna wall-clock times. Required before ÖBB countdowns work; `OebbSource::fetch()` bails if the clock isn't synced (`time(nullptr) < 1.7e9`).
-4. `fetchAll()` — iterates `g_sources`, merges into `g_departures`, sorts ascending by countdown.
-5. `displayBoard()` (`display.cpp`) — draws `MAX_ROWS` rows; each row dispatched through `kRenderers[(int)style]`. `renderCountdown` = amber-on-black (line | direction | minutes); `renderClock` = ÖBB blue board (line + destination, planned/delayed clock times). Shared `drawDirection()`/`wrapText()` fit the direction to 2 lines. No header bar.
-6. `loop()` re-fetches every `REFRESH_INTERVAL_MS`.
+1. `settingsBegin()` + `registerSources()` (`main.cpp`) — open NVS, push `#if`-guarded static source instances to `g_sources`.
+2. **Provisioning gate:** if `!wifiConfigured()` (no stored SSID) **or** `connectWiFi()` fails → `enterProvisioning()` brings up the `Oeffi-Setup` AP + captive portal and spins forever (the save handler reboots). `connectWiFi()` joins the SSID/pass from the settings store (`wifiSsid()`/`wifiPass()`), which falls back to `config.h`'s `WIFI_SSID`/`WIFI_PASS`.
+3. `syncClock()` — NTP via `configTzTime("CET-1CEST,M3.5.0,M10.5.0/3", ...)` so `mktime()`/`localtime()` match the ÖBB board's Vienna wall-clock times. **Returns `bool`**; a failed sync (clock still `< 1.7e9` after 15 s) is treated as **"no real internet"** (open/captive-portal WiFi associates but blocks NTP/HTTPS) → `enterProvisioning("Kein Internet…")` drops back to the setup screen. Also required before ÖBB countdowns work; `OebbSource::fetch()` bails if the clock isn't synced.
+4. `portalStartConfigServer()` — once online, the always-on `oeffi.local` status/reconfigure page goes up; `portalHandle()` is pumped from `loop()`.
+5. `fetchAll()` — iterates `g_sources`, merges into `g_departures`, sorts ascending by countdown.
+6. `displayBoard()` (`display.cpp`) — draws `MAX_ROWS` rows; each row dispatched through `kRenderers[(int)style]`. `renderCountdown` = amber-on-black (line | direction | minutes); `renderClock` = ÖBB blue board (line + destination, planned/delayed clock times). Shared `drawDirection()`/`wrapText()` fit the direction to 2 lines. No header bar.
+7. `loop()` pumps `portalHandle()` and re-fetches every `REFRESH_INTERVAL_MS`.
+
+**Provisioning UX** (`display.cpp` `displaySetupScreen()` + `portal.cpp`): the setup screen is a two-column layout — instructions + `Oeffi-Setup` name on the left, a scannable **WiFi-join QR** on the right (`WIFI:T:nopass;S:<ssid>;;`, meta-chars escaped via `qrEscape()`; QR version 3 / `ECC_LOW` via `drawQr()`). Scanning joins the open AP; the captive portal then auto-opens the config page. The portal reuses one `WebServer`: `portalStartSetupAP()` (AP + DNS catch-all + OS connectivity-probe redirects) vs `portalStartConfigServer()` (STA + mDNS). **Don't call both** — `syncClock()` failure path enters provisioning *before* `portalStartConfigServer()`, so handlers are never double-registered.
 
 ### Key implementation notes
 
@@ -58,7 +63,9 @@ Implemented sources ([src/departures.cpp](src/departures.cpp)):
 
 ### Configuration
 
-All user settings live in `src/config.h`: WiFi credentials, per-provider enable flags (`WL_ENABLED`, `OEBB_ENABLED`), `RBL_IDS` (Wiener Linien, find at https://till.mabe.at/rbl/), `OEBB_STOPS` (ÖBB station **names**, auto-resolved), `OEBB_DESTINATION` (optional ÖBB direction-filter station name), `OEBB_TRAINS_ONLY`, `OEBB_MAX_PER_STOP`, `MAX_ROWS`, `REFRESH_INTERVAL_MS`. **This file holds credentials — keep it out of any public commit.**
+Build-time settings live in `src/config.h`: per-provider enable flags (`WL_ENABLED`, `OEBB_ENABLED`), `RBL_IDS` (Wiener Linien, find at https://till.mabe.at/rbl/), `OEBB_STOPS` (ÖBB station **names**, auto-resolved), `OEBB_DESTINATION` (optional ÖBB direction-filter station name), `OEBB_TRAINS_ONLY`, `OEBB_MAX_PER_STOP`, `MAX_ROWS`, `REFRESH_INTERVAL_MS`.
+
+**WiFi is normally set on-device, not in `config.h`.** `WIFI_SSID`/`WIFI_PASS` default to `""`; the user provisions via the captive portal and creds persist in NVS (the settings store seeds from `config.h`, so a pre-flashed SSID still works as an override-free default). To wipe stored creds: the portal's "WLAN vergessen" button (`clearWifi()`), or re-flash with NVS erase. **`config.h` is git-ignored — keep any credentials out of public commits.**
 
 ## Build & flash commands
 
@@ -66,7 +73,7 @@ All user settings live in `src/config.h`: WiFi credentials, per-provider enable 
 # Build
 pio run
 
-# Flash (port is hardcoded in platformio.ini as /dev/cu.usbserial-11420)
+# Flash (PlatformIO auto-detects the serial port; pin it via upload_port in platformio.ini)
 pio run --target upload
 
 # Serial monitor (115200 baud)
@@ -110,12 +117,14 @@ The board runs **landscape** via `tft.setRotation(1)` in `displayInit()` (320 ×
 
 ## Source layout
 
-- `src/main.cpp` — `setup()`/`loop()`, WiFi, NTP, `registerSources()`, fetch/merge. No TFT or API code.
+- `src/main.cpp` — `setup()`/`loop()`, WiFi connect, NTP, `registerSources()`, fetch/merge, provisioning + no-internet fallback. No TFT or API code.
 - `src/departures.h` / `.cpp` — `RowStyle`, `Departure`, `DepartureSource` + `WienerLinienSource`/`OebbSource`, `httpGetRaw()`/`httpGetJson()`. No display code.
-- `src/display.h` / `.cpp` — `displayInit/Status/Board`, the `TFT_eSPI`, palette, and `kRenderers[]` style→renderer table. No network code.
-- `src/config.h` — all user settings + credentials.
-- `platformio.ini` — single `[env:cyd]` environment; all TFT/hardware config lives here as `build_flags`.
+- `src/display.h` / `.cpp` — `displayInit/Status/Board/SetupScreen`, the `TFT_eSPI`, palette, `kRenderers[]` style→renderer table, and `drawQr()`. No network code.
+- `src/portal.h` / `.cpp` — `portalStartSetupAP()` / `portalStartConfigServer()` / `portalHandle()`: the `WebServer`/`DNSServer`/mDNS captive portal + config page. No display code.
+- `src/settings.h` / `.cpp` — NVS-backed settings store (`settingsBegin()`, typed getters/setters, `wifiSsid/Pass`, `setWifiCreds`, `clearWifi`).
+- `src/config.h` — build-time settings (providers, stops); WiFi creds optional (default on-device).
+- `platformio.ini` — single `[env:cyd]` environment; all TFT/hardware config lives here as `build_flags`; `lib_deps` adds `ricmoo/QRCode`.
 
 ## Debug output
 
-Serial at 115200 baud (`pio device monitor`). Note: PlatformIO's bundled Python venv can break when Homebrew bumps `python@3.x` (dangling symlink); if `pio device monitor` or scripted pyserial reads fail, recreate a throwaway venv (`python3 -m venv … && pip install pyserial`) to read `/dev/cu.usbserial-11420` directly. The `IO 21 is not set as GPIO` warning at boot is just TFT_eSPI's backlight pin init — harmless.
+Serial at 115200 baud (`pio device monitor`). Note: PlatformIO's bundled Python venv can break when Homebrew bumps `python@3.x` (dangling symlink); if `pio device monitor` or scripted pyserial reads fail, recreate a throwaway venv (`python3 -m venv … && pip install pyserial`) to read the port directly (`/dev/cu.usbserial-*`; auto-detected, varies per cable/host). The `IO 21 is not set as GPIO` warning at boot is just TFT_eSPI's backlight pin init — harmless.

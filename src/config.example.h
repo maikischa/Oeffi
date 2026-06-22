@@ -10,9 +10,13 @@
 // ============================================================================
 
 // --- WiFi -------------------------------------------------------------------
-// Note: the ESP32 only supports 2.4 GHz networks (not 5 GHz).
-#define WIFI_SSID   "YOUR_WIFI_NAME"
-#define WIFI_PASS   "YOUR_WIFI_PASSWORD"
+// WiFi is normally configured on-device via the web portal: on first boot (or
+// if these are left empty) the board opens an "Oeffi-Setup" access point — join
+// it and browse to 192.168.4.1 to pick your network. Credentials are stored in
+// flash (NVS), so you do NOT need to set them here. Optionally pre-seed them
+// below to skip the portal. Note: the ESP32 only supports 2.4 GHz (not 5 GHz).
+#define WIFI_SSID   ""
+#define WIFI_PASS   ""
 
 // --- Board ------------------------------------------------------------------
 // Departures shown on screen at once. The landscape layout looks best with 3-4.
