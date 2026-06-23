@@ -10,7 +10,6 @@
 #include <time.h>
 #include <vector>
 #include <algorithm>
-#include "config.h"
 #include "departures.h"
 #include "display.h"
 #include "settings.h"
@@ -22,19 +21,21 @@ static uint32_t g_lastFetch = 0;
 
 // ---------------------------------------------------------------------------
 //  Source registry — enable/disable or add a provider here. Each source is a
-//  static instance (constructed once, no heap churn); `#if` keeps disabled
-//  providers out of the build entirely.
+//  static instance (constructed once, no heap churn). Enabled state and
+//  per-provider config are read from the settings store (web-portal editable
+//  via /providers) rather than compile-time `#if`, so a config change takes
+//  effect on the next reboot without reflashing.
 // ---------------------------------------------------------------------------
 void registerSources() {
-#if WL_ENABLED
-  static WienerLinienSource wl(RBL_IDS, LINE_FILTER);
-  g_sources.push_back(&wl);
-#endif
-#if OEBB_ENABLED
-  static OebbSource oebb(OEBB_STOPS, OEBB_TRAINS_ONLY, OEBB_MAX_PER_STOP,
-                         OEBB_DESTINATION);
-  g_sources.push_back(&oebb);
-#endif
+  if (wlEnabled()) {
+    static WienerLinienSource wl(rblIds(), lineFilter());
+    g_sources.push_back(&wl);
+  }
+  if (oebbEnabled()) {
+    static OebbSource oebb(oebbStops(), oebbTrainsOnly(), oebbMaxPerStop(),
+                           oebbDestination());
+    g_sources.push_back(&oebb);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -101,6 +102,12 @@ bool syncClock() {
   return synced;
 }
 
+// URL of the on-device provider-config page, shown (as text + QR) on the
+// empty board so the user can jump straight there.
+String providersUrl() {
+  return "http://" + WiFi.localIP().toString() + "/providers";
+}
+
 // ---------------------------------------------------------------------------
 //  Fetch from all sources, merge, sort soonest-first
 // ---------------------------------------------------------------------------
@@ -142,21 +149,25 @@ void setup() {
   // network lets us join yet blocks NTP/HTTPS. A failed clock sync means no real
   // internet -> fall back to the setup portal so the user can pick another net.
   if (!syncClock())
-    enterProvisioning("Kein Internet - anderes Netz waehlen");
+    enterProvisioning("No internet - choose another network");
 
   // Connected with working internet: bring up the always-on config server.
   portalStartConfigServer();
+  // Briefly show the reachable address — falls back to this IP if oeffi.local
+  // doesn't resolve on the visitor's device/browser.
+  displayStatus("oeffi.local / " + WiFi.localIP().toString(), StatusKind::Info);
+  delay(3000);
   fetchAll();
   g_lastFetch = millis();
-  displayBoard(g_departures);
+  displayBoard(g_departures, providersUrl());
 }
 
 void loop() {
   portalHandle();  // keep the config server responsive between fetches
-  if (millis() - g_lastFetch >= REFRESH_INTERVAL_MS) {
+  if (millis() - g_lastFetch >= (uint32_t)refreshIntervalMs()) {
     fetchAll();
     g_lastFetch = millis();
-    displayBoard(g_departures);
+    displayBoard(g_departures, providersUrl());
   }
   delay(50);
 }

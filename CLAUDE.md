@@ -15,8 +15,8 @@ Inspired by `coppermilk/wiener_linien_esp32_monitor` (built for the LILYGO T-Dis
 | **Orchestration** | `main.cpp` | WiFi, NTP, source registry, fetch/merge/sort loop, **no-internet → setup fallback**. No TFT or API code. |
 | **Data / providers** | `departures.h` / `.cpp` | `DepartureSource` interface + concrete sources + HTTP/JSON helpers. No display code. |
 | **Display** | `display.h` / `.cpp` | Owns the `TFT_eSPI`, palette, per-style row renderers, and the WiFi-setup screen (incl. QR via `ricmoo/QRCode`). No network code. |
-| **Portal** | `portal.h` / `.cpp` | `WebServer` + captive-portal `DNSServer` + mDNS: the `Oeffi-Setup` provisioning AP and the always-on `oeffi.local` config page. Persists via `settings.*`; no display code. |
-| **Settings** | `settings.h` / `.cpp` | Tiny typed key/value store over NVS (`Preferences`, namespace `oeffi`). Holds WiFi creds; seeded from `config.h` so a pre-flashed config still works. |
+| **Portal** | `portal.h` / `.cpp` | `WebServer` + captive-portal `DNSServer` + mDNS: the `Oeffi-Setup` provisioning AP and the always-on `oeffi.local` config page (`/wifi`, `/providers`, `/system`). Persists via `settings.*`; no display code. |
+| **Settings** | `settings.h` / `.cpp` | Tiny typed key/value store over NVS (`Preferences`, namespace `oeffi`). Holds **all** user settings (WiFi, providers, board/refresh) — web-portal-only, single source of truth, no config file. |
 
 A provider's `fetch()` appends normalised `Departure` records (`line, towards, countdown, style, planned, actual, delayed`). `main.cpp` calls `fetch()` on each registered source, merges, sorts by `countdown`, and hands the vector to `displayBoard()`.
 
@@ -24,10 +24,10 @@ The seam between data and display is **`RowStyle`** (an enum on each `Departure`
 
 **To add a provider:**
 1. Write a `FooSource : DepartureSource` in `departures.{h,cpp}` (model on the existing two); tag its departures with a `RowStyle`.
-2. Add `FOO_*` settings to `config.h` and a `#if FOO_ENABLED` block in `registerSources()` (`main.cpp`).
+2. Add named accessors in `settings.h`/`.cpp` (mirroring `wlEnabled()`/`rblIds()`/etc., disabled/empty by default — sensible hardcoded defaults, no config file), an `if (fooEnabled())` block in `registerSources()` (`main.cpp`), and a config form on `/providers` in `portal.cpp`.
 3. Reuse an existing `RowStyle` for its look, **or** add a `RowStyle` value + a `renderFoo()` + one row in `kRenderers[]` (`display.cpp`) for a new look.
 
-Steps 1–2 are all that's needed if the provider reuses an existing style. **To remove a provider:** set its `*_ENABLED` to 0 (or delete its source + registry block).
+Steps 1–2 are all that's needed if the provider reuses an existing style. **To remove a provider:** disable it via the `/providers` web page, or delete its source + registry block entirely.
 
 Implemented sources ([src/departures.cpp](src/departures.cpp)):
 
@@ -45,13 +45,13 @@ Implemented sources ([src/departures.cpp](src/departures.cpp)):
 
 ### Data flow
 
-1. `settingsBegin()` + `registerSources()` (`main.cpp`) — open NVS, push `#if`-guarded static source instances to `g_sources`.
-2. **Provisioning gate:** if `!wifiConfigured()` (no stored SSID) **or** `connectWiFi()` fails → `enterProvisioning()` brings up the `Oeffi-Setup` AP + captive portal and spins forever (the save handler reboots). `connectWiFi()` joins the SSID/pass from the settings store (`wifiSsid()`/`wifiPass()`), which falls back to `config.h`'s `WIFI_SSID`/`WIFI_PASS`.
-3. `syncClock()` — NTP via `configTzTime("CET-1CEST,M3.5.0,M10.5.0/3", ...)` so `mktime()`/`localtime()` match the ÖBB board's Vienna wall-clock times. **Returns `bool`**; a failed sync (clock still `< 1.7e9` after 15 s) is treated as **"no real internet"** (open/captive-portal WiFi associates but blocks NTP/HTTPS) → `enterProvisioning("Kein Internet…")` drops back to the setup screen. Also required before ÖBB countdowns work; `OebbSource::fetch()` bails if the clock isn't synced.
+1. `settingsBegin()` + `registerSources()` (`main.cpp`) — open NVS, then push static source instances to `g_sources` gated by `if (wlEnabled())`/`if (oebbEnabled())`, reading each provider's config from the settings store (`rblIds()`, `oebbStops()`, etc. — web-portal editable via `/providers`; disabled/empty until configured there).
+2. **Provisioning gate:** if `!wifiConfigured()` (no stored SSID) **or** `connectWiFi()` fails → `enterProvisioning()` brings up the `Oeffi-Setup` AP + captive portal and spins forever (the save handler reboots). `connectWiFi()` joins the SSID/pass from the settings store (`wifiSsid()`/`wifiPass()`), which is `""` until the user saves credentials via the portal.
+3. `syncClock()` — NTP via `configTzTime("CET-1CEST,M3.5.0,M10.5.0/3", ...)` so `mktime()`/`localtime()` match the ÖBB board's Vienna wall-clock times. **Returns `bool`**; a failed sync (clock still `< 1.7e9` after 15 s) is treated as **"no real internet"** (open/captive-portal WiFi associates but blocks NTP/HTTPS) → `enterProvisioning("No internet…")` drops back to the setup screen. Also required before ÖBB countdowns work; `OebbSource::fetch()` bails if the clock isn't synced.
 4. `portalStartConfigServer()` — once online, the always-on `oeffi.local` status/reconfigure page goes up; `portalHandle()` is pumped from `loop()`.
 5. `fetchAll()` — iterates `g_sources`, merges into `g_departures`, sorts ascending by countdown.
-6. `displayBoard()` (`display.cpp`) — draws `MAX_ROWS` rows; each row dispatched through `kRenderers[(int)style]`. `renderCountdown` = amber-on-black (line | direction | minutes); `renderClock` = ÖBB blue board (line + destination, planned/delayed clock times). Shared `drawDirection()`/`wrapText()` fit the direction to 2 lines. No header bar.
-7. `loop()` pumps `portalHandle()` and re-fetches every `REFRESH_INTERVAL_MS`.
+6. `displayBoard()` (`display.cpp`) — draws up to `maxRows()` rows; each row dispatched through `kRenderers[(int)style]`. When `deps` is empty it instead shows an amber "No departures" screen with a QR/text link to `<ip>/providers` (the `configUrl` arg, built in `main.cpp`'s `providersUrl()`). `renderCountdown` = amber-on-black (line | direction | minutes); `renderClock` = ÖBB blue board (line + destination, planned/delayed clock times). Shared `drawDirection()`/`wrapText()` fit the direction to 2 lines. No header bar.
+7. `loop()` pumps `portalHandle()` and re-fetches every `refreshIntervalMs()`.
 
 **Provisioning UX** (`display.cpp` `displaySetupScreen()` + `portal.cpp`): the setup screen is a two-column layout — instructions + `Oeffi-Setup` name on the left, a scannable **WiFi-join QR** on the right (`WIFI:T:nopass;S:<ssid>;;`, meta-chars escaped via `qrEscape()`; QR version 3 / `ECC_LOW` via `drawQr()`). Scanning joins the open AP; the captive portal then auto-opens the config page. The portal reuses one `WebServer`: `portalStartSetupAP()` (AP + DNS catch-all + OS connectivity-probe redirects) vs `portalStartConfigServer()` (STA + mDNS). **Don't call both** — `syncClock()` failure path enters provisioning *before* `portalStartConfigServer()`, so handlers are never double-registered.
 
@@ -63,9 +63,12 @@ Implemented sources ([src/departures.cpp](src/departures.cpp)):
 
 ### Configuration
 
-Build-time settings live in `src/config.h`: per-provider enable flags (`WL_ENABLED`, `OEBB_ENABLED`), `RBL_IDS` (Wiener Linien, find at https://till.mabe.at/rbl/), `OEBB_STOPS` (ÖBB station **names**, auto-resolved), `OEBB_DESTINATION` (optional ÖBB direction-filter station name), `OEBB_TRAINS_ONLY`, `OEBB_MAX_PER_STOP`, `MAX_ROWS`, `REFRESH_INTERVAL_MS`.
+**There is no config file — every user setting lives in NVS and is web-portal-editable.** The settings store (`settings.*`) is the single source of truth; accessors carry sensible hardcoded defaults:
+- **Providers** (`http://oeffi.local/providers`): enabled flags, stop IDs/names, line/direction filters, max-per-stop. Disabled/empty by default → a freshly flashed board shows "No departures" until you add a stop. Saving reboots so `registerSources()` re-reads them.
+- **WiFi** (`/wifi`): `wifiSsid()`/`wifiPass()` default to `""`; the user provisions via the captive portal on first boot. To wipe: the portal's "Forget WiFi" button (`clearWifi()`), or re-flash with NVS erase.
+- **System** (`/system`): `maxRows()` (default 4) and `refreshIntervalMs()` (default 30 000) — the former build-time `MAX_ROWS`/`REFRESH_INTERVAL_MS` macros, now NVS-backed.
 
-**WiFi is normally set on-device, not in `config.h`.** `WIFI_SSID`/`WIFI_PASS` default to `""`; the user provisions via the captive portal and creds persist in NVS (the settings store seeds from `config.h`, so a pre-flashed SSID still works as an override-free default). To wipe stored creds: the portal's "WLAN vergessen" button (`clearWifi()`), or re-flash with NVS erase. **`config.h` is git-ignored — keep any credentials out of public commits.**
+The only compile-time config left is the hardware/display `build_flags` in `platformio.ini`. To wipe all stored settings back to first-boot state: `pio run --target erase` then re-flash.
 
 ## Build & flash commands
 
@@ -84,6 +87,10 @@ pio run --target upload && pio device monitor
 
 # Clean build artifacts
 pio run --target clean
+
+# Wipe ALL stored settings (WiFi, providers, system) back to first-boot state.
+# A plain `upload` leaves NVS intact, so use this to re-test onboarding.
+pio run --target erase && pio run --target upload
 ```
 
 ## Hardware: Cheap Yellow Display (CYD) pin mapping
@@ -120,9 +127,8 @@ The board runs **landscape** via `tft.setRotation(1)` in `displayInit()` (320 ×
 - `src/main.cpp` — `setup()`/`loop()`, WiFi connect, NTP, `registerSources()`, fetch/merge, provisioning + no-internet fallback. No TFT or API code.
 - `src/departures.h` / `.cpp` — `RowStyle`, `Departure`, `DepartureSource` + `WienerLinienSource`/`OebbSource`, `httpGetRaw()`/`httpGetJson()`. No display code.
 - `src/display.h` / `.cpp` — `displayInit/Status/Board/SetupScreen`, the `TFT_eSPI`, palette, `kRenderers[]` style→renderer table, and `drawQr()`. No network code.
-- `src/portal.h` / `.cpp` — `portalStartSetupAP()` / `portalStartConfigServer()` / `portalHandle()`: the `WebServer`/`DNSServer`/mDNS captive portal + config page. No display code.
-- `src/settings.h` / `.cpp` — NVS-backed settings store (`settingsBegin()`, typed getters/setters, `wifiSsid/Pass`, `setWifiCreds`, `clearWifi`).
-- `src/config.h` — build-time settings (providers, stops); WiFi creds optional (default on-device).
+- `src/portal.h` / `.cpp` — `portalStartSetupAP()` / `portalStartConfigServer()` / `portalHandle()`: the `WebServer`/`DNSServer`/mDNS captive portal + config page (`/`, `/wifi`, `/providers`, `/system`). No display code.
+- `src/settings.h` / `.cpp` — NVS-backed settings store (`settingsBegin()`, typed getters/setters, `wifiSsid/Pass`, `setWifiCreds`, `clearWifi`, provider config accessors, `maxRows()`/`refreshIntervalMs()`). The single source of truth — there is no config file.
 - `platformio.ini` — single `[env:cyd]` environment; all TFT/hardware config lives here as `build_flags`; `lib_deps` adds `ricmoo/QRCode`.
 
 ## Debug output

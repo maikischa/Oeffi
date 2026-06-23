@@ -3,13 +3,22 @@
 // ----------------------------------------------------------------------------
 #include "settings.h"
 #include <Preferences.h>
-#include "config.h"
 
 static Preferences g_prefs;
 
 // NVS keys are limited to 15 chars.
 static const char* kKeyWifiSsid = "wifi_ssid";
 static const char* kKeyWifiPass = "wifi_pass";
+static const char* kKeyWlEnabled = "wl_enabled";
+static const char* kKeyRblIds = "rbl_ids";
+static const char* kKeyLineFilter = "line_filter";
+static const char* kKeyOebbEnabled = "oebb_enabled";
+static const char* kKeyOebbStops = "oebb_stops";
+static const char* kKeyOebbTrains = "oebb_trains";
+static const char* kKeyOebbMax = "oebb_max";
+static const char* kKeyOebbDest = "oebb_dest";
+static const char* kKeyMaxRows = "max_rows";
+static const char* kKeyRefreshMs = "refresh_ms";
 
 void settingsBegin() {
   // false = read/write. The namespace is created on first write.
@@ -37,10 +46,9 @@ void settingSetBool(const char* key, bool value) {
 }
 
 // --- WiFi credentials -------------------------------------------------------
-// Seeded from config.h (WIFI_SSID/WIFI_PASS) so an existing flashed config keeps
-// working; once saved via the portal, the stored value wins.
-String wifiSsid() { return settingStr(kKeyWifiSsid, WIFI_SSID); }
-String wifiPass() { return settingStr(kKeyWifiPass, WIFI_PASS); }
+// Configured entirely on-device via the portal; "" until the user saves one.
+String wifiSsid() { return settingStr(kKeyWifiSsid, ""); }
+String wifiPass() { return settingStr(kKeyWifiPass, ""); }
 
 bool wifiConfigured() { return wifiSsid().length() > 0; }
 
@@ -52,4 +60,41 @@ void setWifiCreds(const String& ssid, const String& pass) {
 void clearWifi() {
   g_prefs.remove(kKeyWifiSsid);
   g_prefs.remove(kKeyWifiPass);
+}
+
+// --- Provider config ----------------------------------------------------------
+// Configured entirely on-device via the portal; disabled/empty until the
+// user saves a config at /providers.
+bool wlEnabled()    { return settingBool(kKeyWlEnabled, false); }
+String rblIds()     { return settingStr(kKeyRblIds, ""); }
+String lineFilter() { return settingStr(kKeyLineFilter, ""); }
+
+void setWlConfig(bool enabled, const String& rblIds, const String& lineFilter) {
+  settingSetBool(kKeyWlEnabled, enabled);
+  settingSetStr(kKeyRblIds, rblIds);
+  settingSetStr(kKeyLineFilter, lineFilter);
+}
+
+bool oebbEnabled()        { return settingBool(kKeyOebbEnabled, false); }
+String oebbStops()        { return settingStr(kKeyOebbStops, ""); }
+bool oebbTrainsOnly()     { return settingBool(kKeyOebbTrains, true); }
+int oebbMaxPerStop()      { return settingInt(kKeyOebbMax, 6); }
+String oebbDestination()  { return settingStr(kKeyOebbDest, ""); }
+
+void setOebbConfig(bool enabled, const String& stops, bool trainsOnly,
+                    int maxPerStop, const String& destination) {
+  settingSetBool(kKeyOebbEnabled, enabled);
+  settingSetStr(kKeyOebbStops, stops);
+  settingSetBool(kKeyOebbTrains, trainsOnly);
+  settingSetInt(kKeyOebbMax, maxPerStop);
+  settingSetStr(kKeyOebbDest, destination);
+}
+
+// --- System settings ---------------------------------------------------------
+int maxRows()           { return settingInt(kKeyMaxRows, 4); }
+int refreshIntervalMs() { return settingInt(kKeyRefreshMs, 30000); }
+
+void setSystemConfig(int maxRows, int refreshIntervalMs) {
+  settingSetInt(kKeyMaxRows, maxRows);
+  settingSetInt(kKeyRefreshMs, refreshIntervalMs);
 }

@@ -24,5 +24,9 @@ void displayStatus(const String& msg, StatusKind kind = StatusKind::Info);
 void displaySetupScreen(const String& apName, const String& ip,
                         const String& reason = "");
 
-// Render the departure board. Rows are drawn per `Departure::style`.
-void displayBoard(const std::vector<Departure>& deps);
+// Render the departure board. Rows are drawn per `Departure::style`. When
+// `deps` is empty, an "add a provider" screen is shown instead; `configUrl`
+// (e.g. "http://192.168.0.41/providers") is rendered there as scannable text
+// + QR so the user can jump straight to the config page.
+void displayBoard(const std::vector<Departure>& deps,
+                  const String& configUrl = "");

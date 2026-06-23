@@ -7,7 +7,7 @@
 #include <TFT_eSPI.h>
 #include <qrcode.h>
 #include <algorithm>
-#include "config.h"
+#include "settings.h"
 
 // ---------------------------------------------------------------------------
 //  Palette
@@ -236,22 +236,43 @@ void displaySetupScreen(const String& apName, const String& ip,
   tft.setTextFont(2);  // restore default
 }
 
-void displayBoard(const std::vector<Departure>& deps) {
+void displayBoard(const std::vector<Departure>& deps, const String& configUrl) {
   const int W = tft.width();
   const int H = tft.height();
-  const int rowH = H / MAX_ROWS;
+  const int nMax = std::max(1, maxRows());
+  const int rowH = H / nMax;
 
   tft.fillScreen(COL_BG);
 
   if (deps.empty()) {
+    // Amber-on-black to match the board; a centred QR jumps to /providers.
+    const String url = configUrl.length() ? configUrl
+                                          : "http://oeffi.local/providers";
+    const int scale = 3;
+    const int qDim = (29 + 4) * scale;  // version-3 box side
+
     tft.setTextDatum(MC_DATUM);
     tft.setTextFont(4);
-    tft.setTextColor(COL_DIM, COL_BG);
-    tft.drawString("Keine Abfahrten", W / 2, H / 2);
+    tft.setTextColor(COL_AMBER, COL_BG);
+    tft.drawString("No departures", W / 2, 24);
+
+    drawQr(url, (W - qDim) / 2, 46, scale);
+
+    tft.setTextFont(2);
+    tft.setTextColor(TFT_WHITE, COL_BG);
+    tft.drawString("Scan to add a stop, or open:", W / 2, 46 + qDim + 14);
+    tft.setTextColor(COL_AMBER, COL_BG);
+    // Show the bare host/path (no scheme) so it stays on one line.
+    String shown = url;
+    shown.replace("http://", "");
+    tft.drawString(shown, W / 2, 46 + qDim + 34);
+
+    tft.setTextDatum(TL_DATUM);
+    tft.setTextFont(2);  // restore default
     return;
   }
 
-  int rows = std::min((int)deps.size(), (int)MAX_ROWS);
+  int rows = std::min((int)deps.size(), nMax);
   for (int i = 0; i < rows; i++) {
     kRenderers[(int)deps[i].style](deps[i], i * rowH, rowH);
     if (i > 0) tft.drawFastHLine(0, i * rowH, W, COL_DIM);

@@ -11,8 +11,9 @@ Built-in data providers:
 Both run at once and are merged into one board, sorted by soonest departure. Adding
 another transit provider is a small, well-defined job — see [Adding a provider](#adding-a-provider).
 
-WiFi is set up **on the device** — a phone-friendly web portal with a scannable QR code,
-no recompiling to change networks. Everything else (which stops to show) lives in one config file.
+Everything is configured **on the device** through a phone-friendly web portal — WiFi
+(with a scannable QR code to join), which stops to show, and the board settings. There is
+no config file and no recompiling to change any of it.
 
 > "Öffi" is the Austrian/German colloquial word for public transport
 > (*öffentliche Verkehrsmittel*) — trams, trains, buses, the lot.
@@ -51,18 +52,14 @@ you do **not** need to edit TFT_eSPI's `User_Setup.h`.
 git clone https://github.com/maikischa/Oeffi.git
 cd Oeffi
 
-# 2. Create your config from the template and choose your stops
-cp src/config.example.h src/config.h
-$EDITOR src/config.h          # set RBL_IDS / OEBB_STOPS — WiFi is set on-device
-
-# 3. Build, flash and watch the serial log
+# 2. Build, flash and watch the serial log — there's nothing to configure first
 pio run --target upload
 pio device monitor
 ```
 
-You **don't** put WiFi credentials in `config.h` — the board asks for them on first boot
-(see below). After that it connects, syncs the clock over NTP, fetches departures and draws
-the board.
+There is **no config file to edit** — WiFi, providers (which stops to show) and system
+settings are all set up on the device itself via the web portal (see below). The board
+boots with no provider configured and shows "No departures" until you add one.
 
 ## First boot — WiFi setup
 
@@ -74,37 +71,35 @@ it puts **itself** into setup mode:
    (it's an open network — no password). Or join it manually from your WiFi list.
 3. A **captive-portal page opens by itself** (the same one is at `http://192.168.4.1/`).
    Pick your home network from the list, type its password, and tap **save**.
-4. The board reboots, connects, and starts showing departures. Your credentials are stored in
-   the ESP32's flash (NVS), so it reconnects automatically on every future boot.
+4. The board reboots and connects. With no provider configured yet, it shows
+   "No departures" — open `http://oeffi.local/providers` (or scan the network again on a
+   phone) and add at least one stop; saving there reboots the board and it starts showing
+   departures. Both WiFi credentials and provider config are stored in the ESP32's flash
+   (NVS), so they persist across every future boot.
 
 **No working internet?** Some open/"free" WiFi networks (hotel, transit, café) let a device
 *join* but block everything until you accept terms in a browser — which the ESP32 can't do. The
 board detects this (the NTP clock never syncs) and **drops back to the WiFi Setup screen** with a
-*"Kein Internet"* note, so you can pick a different network. It does **not** sit on a blank board.
+*"No internet"* note, so you can pick a different network. It does **not** sit on a blank board.
 
-### Changing WiFi later
+### Changing settings later
 
-While the board is running it serves a small config page at **`http://oeffi.local/`**
-(or its IP — shown in the serial log). From there you can switch to a different network or
-**forget** the current one (which reboots back into setup mode).
+While the board is running it serves a config page at **`http://oeffi.local/`**
+(or its IP — shown in the serial log, and briefly on the display after connecting), with
+three subpages — saving on any of them reboots the board to apply the change:
+
+| Page | What you can change |
+|---|---|
+| **`/wifi`** | Switch to a different network, or **forget** the current one (reboots back into setup mode). |
+| **`/providers`** | Enable/disable Wiener Linien and ÖBB, set their stops/stations, line and direction filters. Editing any field auto-enables that provider. |
+| **`/system`** | How many departures to show at once (3–4 looks best) and the refresh interval (seconds). |
 
 ## Configuration
 
-Everything that isn't WiFi lives in `src/config.h` (your private copy of `src/config.example.h`):
-
-| Setting | Meaning |
-|---|---|
-| `WIFI_SSID` / `WIFI_PASS` | Optional — leave empty and use the on-device portal. Pre-seed only if you want to skip setup. ESP32 is 2.4 GHz only (no 5 GHz). |
-| `MAX_ROWS` | Departures shown at once (3–4 looks best). |
-| `REFRESH_INTERVAL_MS` | How often to refresh (default 30 s). |
-| `WL_ENABLED`, `RBL_IDS`, `LINE_FILTER` | Wiener Linien stop(s) — find your RBL at <https://till.mabe.at/rbl/>. |
-| `OEBB_ENABLED`, `OEBB_STOPS` | ÖBB station name(s), e.g. `"Wien Mitte"` — resolved to IDs automatically. |
-| `OEBB_TRAINS_ONLY` | Hide bus/tram/subway at ÖBB stops. |
-| `OEBB_DESTINATION` | Optional: only trains heading via this station (incl. pass-through). |
-
-Set `WL_ENABLED`/`OEBB_ENABLED` to `0` to turn a provider off entirely.
-
-> **Your `config.h` is git-ignored** so any credentials you *do* put there never land in a commit.
+There is **nothing to configure at build time** — everything lives in the on-device web
+portal above and persists in the ESP32's flash (NVS). The only compile-time items left are
+the hardware/display `build_flags` in [`platformio.ini`](platformio.ini), which you only
+touch if your CYD variant differs (see [Troubleshooting](#troubleshooting)).
 
 ---
 
@@ -125,10 +120,12 @@ display.*       Presentation: owns the TFT, the palette, the row renderers and
                 the WiFi-setup screen (incl. the QR). Knows nothing about the network.
 
 portal.*        Web portal: the "Oeffi-Setup" captive portal (first run) and the
-                always-on config page at oeffi.local. Persists via settings.*.
+                always-on config page at oeffi.local (with /wifi, /providers and
+                /system subpages). Persists via settings.*.
 
-settings.*      Tiny key/value store over the ESP32's flash (NVS) — holds the
-                WiFi credentials entered through the portal.
+settings.*      Tiny key/value store over the ESP32's flash (NVS) — holds every
+                user setting (WiFi, providers, board/refresh). There is no
+                config file; this is the single source of truth.
 ```
 
 Each provider's `fetch()` appends normalised `Departure` records. `main.cpp` merges all
@@ -145,10 +142,10 @@ boot → load settings → WiFi credentials? ──no──► WiFi Setup screen
                        connect ──fail──► (same setup screen)
                           │ ok
                           ▼
-                       NTP sync ──fail──► WiFi Setup screen ("Kein Internet")
+                       NTP sync ──fail──► WiFi Setup screen ("No internet")
                           │ ok                (open/captive-portal WiFi → pick another)
                           ▼
-                       fetch → merge → sort → draw board   (repeat every REFRESH_INTERVAL_MS)
+                       fetch → merge → sort → draw board   (repeat every refresh interval)
 ```
 
 ### Data sources
@@ -165,8 +162,9 @@ boot → load settings → WiFi credentials? ──no──► WiFi Setup screen
 1. Add a `class FooSource : public DepartureSource` in `departures.h` / `departures.cpp`
    (model it on the two existing sources). In its `fetch()`, push `Departure` records and
    tag each with a `RowStyle`.
-2. Add `FOO_*` settings to `config.example.h` and a `#if FOO_ENABLED` block in
-   `registerSources()` in `main.cpp`.
+2. Add named accessors (`fooEnabled()`, etc.) to `settings.h`/`.cpp`, an
+   `if (fooEnabled())` block in `registerSources()` in `main.cpp`, and a config
+   form on the `/providers` page in `portal.cpp`.
 3. Reuse an existing `RowStyle` for the row look — **or**, for a new look, add a `RowStyle`
    value, a `renderFoo()` function, and one entry in the `kRenderers[]` table in `display.cpp`.
 
@@ -175,15 +173,13 @@ Steps 1–2 are all you need if the new provider reuses an existing style.
 ## Project layout
 
 ```
-platformio.ini          Board, libraries, TFT_eSPI build flags
+platformio.ini          Board, libraries, TFT_eSPI build flags (only build-time config)
 src/
-  config.example.h      Template — copy to config.h
-  config.h              Your private settings (git-ignored)
   main.cpp              setup()/loop(), WiFi, NTP, source registry, setup fallback
   departures.h/.cpp     DepartureSource interface + providers + HTTP helpers
   display.h/.cpp        TFT, palette, row renderers, WiFi-setup screen + QR
   portal.h/.cpp         Captive-portal provisioning + oeffi.local config server
-  settings.h/.cpp       WiFi credentials store (ESP32 flash / NVS)
+  settings.h/.cpp       All user settings store — WiFi, providers, system (ESP32 flash / NVS)
 CLAUDE.md               Architecture notes & gotchas for contributors
 ```
 
@@ -191,8 +187,10 @@ CLAUDE.md               Architecture notes & gotchas for contributors
 
 - **Stuck on the WiFi Setup screen** — the network has no usable internet (often an open/
   captive-portal WiFi). Scan the QR / join `Oeffi-Setup` and pick a different network.
-- **Forgot which network it's on / want to change it** — open `http://oeffi.local/` and use
-  *change* or *forget WiFi*. If `oeffi.local` doesn't resolve, use the IP from the serial log.
+- **Forgot which network it's on / want to change it** — open `http://oeffi.local/wifi`
+  to change or forget it. If `oeffi.local` doesn't resolve, use the IP from the serial log.
+- **Board shows "No departures"** — no provider is configured yet (or both got disabled);
+  open `http://oeffi.local/providers` and add at least one stop.
 - **Display upside-down** — change `tft.setRotation(1)` to `3` in `displayInit()` (`display.cpp`).
 - **Wrong colours / mirrored** — this CYD variant is ST7789 with BGR order; the flags in
   `platformio.ini` (`ST7789_DRIVER`, `TFT_RGB_ORDER=TFT_BGR`, `TFT_INVERSION_OFF`) handle that.
