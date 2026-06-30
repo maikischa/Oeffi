@@ -19,6 +19,7 @@ static const char* kKeyOebbMax = "oebb_max";
 static const char* kKeyOebbDest = "oebb_dest";
 static const char* kKeyMaxRows = "max_rows";
 static const char* kKeyRefreshMs = "refresh_ms";
+static const char* kKeyRotation = "rotation";
 
 void settingsBegin() {
   // false = read/write. The namespace is created on first write.
@@ -93,8 +94,10 @@ void setOebbConfig(bool enabled, const String& stops, bool trainsOnly,
 // --- System settings ---------------------------------------------------------
 int maxRows()           { return settingInt(kKeyMaxRows, 4); }
 int refreshIntervalMs() { return settingInt(kKeyRefreshMs, 30000); }
+int displayRotation()   { return settingInt(kKeyRotation, 3); }
 
-void setSystemConfig(int maxRows, int refreshIntervalMs) {
+void setSystemConfig(int maxRows, int refreshIntervalMs, int displayRotation) {
   settingSetInt(kKeyMaxRows, maxRows);
   settingSetInt(kKeyRefreshMs, refreshIntervalMs);
+  settingSetInt(kKeyRotation, displayRotation);
 }

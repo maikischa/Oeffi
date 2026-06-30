@@ -310,6 +310,13 @@ static void handleSystemRoot() {
           "<label>Refresh interval (seconds)</label>"
           "<input name=refresh_s type=number min=10 max=3600 value='" +
             String(refreshIntervalMs() / 1000) + "'>"
+          "<label>Screen orientation</label>"
+          "<select name=rotation>"
+          "<option value=1" + String(displayRotation() == 1 ? " selected" : "") +
+            ">Normal</option>"
+          "<option value=3" + String(displayRotation() == 3 ? " selected" : "") +
+            ">Flipped 180&deg;</option>"
+          "</select>"
           "<button type=submit>Save &amp; restart</button></form>"
           "<p class=muted><a href=/>&larr; Back</a></p>";
   page += FPSTR(kFoot);
@@ -325,7 +332,10 @@ static void handleSystemSave() {
   if (secs < 10) secs = 10;
   if (secs > 3600) secs = 3600;
 
-  setSystemConfig(rows, secs * 1000);
+  int rot = server.arg("rotation").toInt();
+  if (rot != 1 && rot != 3) rot = 3;
+
+  setSystemConfig(rows, secs * 1000, rot);
 
   server.send(200, "text/html", restartingPage(
       "Saved",

@@ -18,6 +18,10 @@ void displayInit();
 // Show a centred status message (boot / WiFi / errors).
 void displayStatus(const String& msg, StatusKind kind = StatusKind::Info);
 
+// Branded boot splash with a status line at the bottom. Call repeatedly during
+// startup to update `status` (e.g. "Connecting to <ssid>").
+void displayBoot(const String& status);
+
 // WiFi-provisioning instructions: how to join the setup AP and open the portal.
 // `reason` (optional) is shown as a warning line above the title — used when we
 // drop back into setup because the joined network has no working internet.

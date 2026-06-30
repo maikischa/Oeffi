@@ -38,11 +38,12 @@ void   setOebbConfig(bool enabled, const String& stops, bool trainsOnly,
                       int maxPerStop, const String& destination);
 
 // --- System settings ---------------------------------------------------------
-// Board layout / refresh cadence; web-portal editable at /system. Defaults
-// apply until the user saves a value.
+// Board layout / refresh cadence / orientation; web-portal editable at /system.
+// Defaults apply until the user saves a value.
 int    maxRows();                 // departures shown on screen at once
 int    refreshIntervalMs();       // how often to re-fetch (milliseconds)
-void   setSystemConfig(int maxRows, int refreshIntervalMs);
+int    displayRotation();         // TFT_eSPI rotation: 1 = landscape, 3 = 180° flip
+void   setSystemConfig(int maxRows, int refreshIntervalMs, int displayRotation);
 
 // --- Generic typed accessors (foundation for later settings) ----------------
 // Read a stored value, falling back to `def` (the hardcoded default the typed

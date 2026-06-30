@@ -53,7 +53,7 @@ void registerSources() {
 // ---------------------------------------------------------------------------
 bool connectWiFi() {
   String ssid = wifiSsid();
-  displayStatus("WiFi: " + ssid, StatusKind::Info);
+  displayBoot("Connecting to " + ssid);
   Serial.printf("[wifi] connecting to %s\n", ssid.c_str());
   WiFi.mode(WIFI_STA);
   WiFi.begin(ssid.c_str(), wifiPass().c_str());
@@ -145,9 +145,10 @@ void setup() {
   Serial.begin(115200);
   Serial.println("\n[boot] Oeffi");
 
+  settingsBegin();      // open NVS first so displayInit() can read the saved rotation
   displayInit();
   touchInit();
-  settingsBegin();
+  displayBoot("Starting...");
   registerSources();
 
   // No stored WiFi, or it won't connect -> drop into the setup portal (never
@@ -165,7 +166,7 @@ void setup() {
   portalStartConfigServer();
   // Briefly show the reachable address — falls back to this IP if oeffi.local
   // doesn't resolve on the visitor's device/browser.
-  displayStatus("oeffi.local / " + WiFi.localIP().toString(), StatusKind::Info);
+  displayBoot("oeffi.local  /  " + WiFi.localIP().toString());
   delay(3000);
   fetchAll();
   g_lastFetch = millis();

@@ -145,7 +145,7 @@ static const RowRenderer kRenderers[] = {
 // ---------------------------------------------------------------------------
 void displayInit() {
   tft.init();
-  tft.setRotation(1);  // Landscape 320x240, ST7789 (use 3 if upside-down)
+  tft.setRotation(displayRotation());  // landscape; 1 or 3 (180° flip), set at /system
   tft.fillScreen(COL_BG);
 }
 
@@ -155,6 +155,40 @@ void displayStatus(const String& msg, StatusKind kind) {
   tft.setTextFont(2);
   tft.setTextColor(kind == StatusKind::Warn ? TFT_RED : COL_AMBER, COL_BG);
   tft.drawString(msg, tft.width() / 2, tft.height() / 2);
+}
+
+void displayBoot(const String& status) {
+  const int W = tft.width();
+  const int H = tft.height();
+  tft.fillScreen(COL_BG);
+
+  // Title "Öffi" — GFX FreeFonts are ASCII-only, so draw "Offi" big and add the
+  // umlaut dots over the O by hand.
+  tft.setFreeFont(&FreeSansBold24pt7b);
+  tft.setTextColor(COL_AMBER, COL_BG);
+  tft.setTextDatum(MC_DATUM);
+  const int cy = 88;
+  tft.drawString("Offi", W / 2, cy);
+  const int fh   = tft.fontHeight();
+  const int full = tft.textWidth("Offi");
+  const int oCx  = W / 2 - full / 2 + tft.textWidth("O") / 2;
+  const int dotY = cy - fh / 2 + 3;            // accent zone above the cap
+  tft.fillRect(oCx - 8, dotY, 4, 4, COL_AMBER);
+  tft.fillRect(oCx + 4, dotY, 4, 4, COL_AMBER);
+
+  // Accent underline + subtitle.
+  tft.fillRect(W / 2 - 48, cy + fh / 2 + 2, 96, 3, COL_AMBER);
+  tft.setFreeFont(&FreeSansBold9pt7b);
+  tft.setTextColor(COL_DIM, COL_BG);
+  tft.drawString("Departure Board", W / 2, cy + fh / 2 + 24);
+
+  // Status line near the bottom.
+  tft.setTextFont(2);
+  tft.setTextColor(TFT_WHITE, COL_BG);
+  tft.drawString(status, W / 2, H - 22);
+
+  tft.setTextDatum(TL_DATUM);
+  tft.setTextFont(2);  // restore default
 }
 
 // Backslash-escape the WiFi-QR meta chars (\ ; , : ") per the MECARD-style
