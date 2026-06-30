@@ -14,10 +14,19 @@
 #include "display.h"
 #include "settings.h"
 #include "portal.h"
+#include "touch.h"
 
 static std::vector<Departure> g_departures;
 static std::vector<DepartureSource*> g_sources;
 static uint32_t g_lastFetch = 0;
+
+// On-board touch UI: the board, plus a transient gear "tool" icon that opens a
+// settings/QR screen. The icon auto-hides kToolTimeoutMs after it appears.
+enum UiState { STATE_BOARD, STATE_SETTINGS };
+static UiState  g_uiState     = STATE_BOARD;
+static bool     g_toolVisible = false;
+static uint32_t g_toolShownAt = 0;
+static const uint32_t kToolTimeoutMs = 5000;
 
 // ---------------------------------------------------------------------------
 //  Source registry — enable/disable or add a provider here. Each source is a
@@ -137,6 +146,7 @@ void setup() {
   Serial.println("\n[boot] Oeffi");
 
   displayInit();
+  touchInit();
   settingsBegin();
   registerSources();
 
@@ -162,12 +172,51 @@ void setup() {
   displayBoard(g_departures, providersUrl());
 }
 
+// ---------------------------------------------------------------------------
+//  On-board touch UI — a tap surfaces the gear tool icon (bottom-right) for
+//  ~5 s; tapping it opens a settings/QR screen (to the config home page),
+//  where any tap returns to the board.
+// ---------------------------------------------------------------------------
+void handleUi() {
+  int tx, ty;
+  const bool tapped = touchGetTap(tx, ty);
+
+  if (g_uiState == STATE_SETTINGS) {
+    if (tapped) {                     // any tap dismisses -> back to the board
+      g_uiState = STATE_BOARD;
+      displayBoard(g_departures, providersUrl());
+    }
+    return;
+  }
+
+  // STATE_BOARD: expire the tool icon after the timeout (redraw to erase it).
+  if (g_toolVisible && millis() - g_toolShownAt >= kToolTimeoutMs) {
+    g_toolVisible = false;
+    displayBoard(g_departures, providersUrl());
+  }
+
+  if (!tapped) return;
+
+  if (g_toolVisible && displayToolIconHit(tx, ty)) {
+    g_uiState = STATE_SETTINGS;       // tapped the icon -> open settings QR
+    g_toolVisible = false;
+    displaySettingsScreen("http://" + WiFi.localIP().toString() + "/");
+  } else {                            // any other tap (re)surfaces the icon
+    g_toolVisible = true;
+    g_toolShownAt = millis();
+    displayShowToolIcon();
+  }
+}
+
 void loop() {
   portalHandle();  // keep the config server responsive between fetches
-  if (millis() - g_lastFetch >= (uint32_t)refreshIntervalMs()) {
+  handleUi();      // surface/handle the on-board tool icon + settings screen
+  if (g_uiState == STATE_BOARD &&
+      millis() - g_lastFetch >= (uint32_t)refreshIntervalMs()) {
     fetchAll();
     g_lastFetch = millis();
     displayBoard(g_departures, providersUrl());
+    g_toolVisible = false;  // board redrawn -> any visible tool icon is gone
   }
   delay(50);
 }

@@ -30,3 +30,15 @@ void displaySetupScreen(const String& apName, const String& ip,
 // + QR so the user can jump straight to the config page.
 void displayBoard(const std::vector<Departure>& deps,
                   const String& configUrl = "");
+
+// Overlay the gear "tool" button in the bottom-right corner of the current
+// board (drawn on top — erase it by redrawing the board).
+void displayShowToolIcon();
+
+// Settings screen reached from the tool icon: a QR of `url` (scan to open the
+// config page) plus a back arrow hinting that any tap returns to the board.
+void displaySettingsScreen(const String& url);
+
+// Hit-test (in screen px) for the on-board tool button; the touch target is
+// slightly larger than the drawn button.
+bool displayToolIconHit(int x, int y);

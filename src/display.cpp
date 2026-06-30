@@ -236,6 +236,96 @@ void displaySetupScreen(const String& apName, const String& ip,
   tft.setTextFont(2);  // restore default
 }
 
+// ---------------------------------------------------------------------------
+//  On-board controls: the "tool" (settings) button + the settings/QR screen.
+//  Geometry and hit-testing live here so the display stays the single owner of
+//  the screen layout; main.cpp only asks "did this tap hit a button?".
+// ---------------------------------------------------------------------------
+static const int kBtnSize = 46;   // button square (px)
+static const int kBtnPad  = 6;    // margin from the screen edge
+static const int kHitGrow = 10;   // enlarge the touch target beyond the visible button
+
+static void toolBtnRect(int& x, int& y) {   // bottom-right
+  x = tft.width()  - kBtnSize - kBtnPad;
+  y = tft.height() - kBtnSize - kBtnPad;
+}
+static void backBtnRect(int& x, int& y) {    // bottom-left
+  x = kBtnPad;
+  y = tft.height() - kBtnSize - kBtnPad;
+}
+static bool btnHit(int px, int py, int bx, int by) {
+  return px >= bx - kHitGrow && px < bx + kBtnSize + kHitGrow &&
+         py >= by - kHitGrow && py < by + kBtnSize + kHitGrow;
+}
+
+// Rounded button chrome shared by both controls: dark fill, amber border.
+static void drawButtonBox(int x, int y) {
+  tft.fillRoundRect(x, y, kBtnSize, kBtnSize, 8, COL_BG);
+  tft.drawRoundRect(x, y, kBtnSize, kBtnSize, 8, COL_AMBER);
+}
+
+// A gear glyph centred at (cx,cy): 8 teeth around a body with a hole.
+static void drawGear(int cx, int cy, uint16_t col) {
+  const int rOuter = 15, rBody = 12, rHole = 5, tooth = 5;
+  for (int i = 0; i < 8; i++) {
+    float a = i * (PI / 4.0f);
+    int tx = cx + (int)(cos(a) * rOuter);
+    int ty = cy + (int)(sin(a) * rOuter);
+    tft.fillRect(tx - tooth / 2, ty - tooth / 2, tooth, tooth, col);
+  }
+  tft.fillCircle(cx, cy, rBody, col);
+  tft.fillCircle(cx, cy, rHole, COL_BG);
+}
+
+// A left-pointing back arrow centred at (cx,cy).
+static void drawBackArrow(int cx, int cy, uint16_t col) {
+  const int s = 11;
+  tft.fillTriangle(cx - s, cy, cx, cy - s, cx, cy + s, col);   // arrowhead
+  tft.fillRect(cx, cy - s / 3, s + 2, (2 * s) / 3 + 1, col);   // shaft
+}
+
+void displayShowToolIcon() {
+  int x, y; toolBtnRect(x, y);
+  drawButtonBox(x, y);
+  drawGear(x + kBtnSize / 2, y + kBtnSize / 2, COL_AMBER);
+}
+
+bool displayToolIconHit(int px, int py) {
+  int x, y; toolBtnRect(x, y); return btnHit(px, py, x, y);
+}
+
+void displaySettingsScreen(const String& url) {
+  const int W = tft.width();
+  tft.fillScreen(COL_BG);
+
+  // Centred QR (same style as the empty-board screen): scan to open the config
+  // page on the home network.
+  const int scale = 3;
+  const int qDim  = (29 + 4) * scale;       // version-3 box side
+
+  tft.setTextDatum(MC_DATUM);
+  tft.setTextFont(4);
+  tft.setTextColor(COL_AMBER, COL_BG);
+  tft.drawString("Settings", W / 2, 24);
+
+  drawQr(url, (W - qDim) / 2, 46, scale);
+
+  tft.setTextFont(2);
+  tft.setTextColor(TFT_WHITE, COL_BG);
+  tft.drawString("Scan to configure, or open:", W / 2, 46 + qDim + 14);
+  tft.setTextColor(COL_AMBER, COL_BG);
+  String shown = url; shown.replace("http://", "");
+  tft.drawString(shown, W / 2, 46 + qDim + 34);
+
+  // Back arrow (bottom-left) — a hint that tapping returns to the board.
+  int bx, by; backBtnRect(bx, by);
+  drawButtonBox(bx, by);
+  drawBackArrow(bx + kBtnSize / 2, by + kBtnSize / 2, COL_AMBER);
+
+  tft.setTextDatum(TL_DATUM);
+  tft.setTextFont(2);  // restore default
+}
+
 void displayBoard(const std::vector<Departure>& deps, const String& configUrl) {
   const int W = tft.width();
   const int H = tft.height();

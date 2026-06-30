@@ -29,7 +29,7 @@ no config file and no recompiling to change any of it.
 | Board | ESP32 "Cheap Yellow Display" (CYD), 2.8" — sold as `ESP32-2432S028` / `185-ESP32-2.8-HuangBan` |
 | MCU | ESP32-WROOM (dual-core, WiFi) |
 | Display | 2.8" 240×320 SPI TFT, **ST7789** controller (some listings say ILI9341 — it is ST7789) |
-| Touch | XPT2046 (present, not used yet) |
+| Touch | XPT2046 resistive — drives the on-screen settings menu |
 
 No wiring required — the display, MCU and USB-serial are all on the one board. Just a USB cable.
 
@@ -38,7 +38,8 @@ No wiring required — the display, MCU and USB-serial are all on the one board.
 - [PlatformIO](https://platformio.org/) (CLI or the VS Code extension)
 - Arduino framework for ESP32
 - Libraries (installed automatically by PlatformIO): [TFT_eSPI](https://github.com/Bodmer/TFT_eSPI),
-  [ArduinoJson](https://arduinojson.org/), [QRCode](https://github.com/ricmoo/QRCode)
+  [ArduinoJson](https://arduinojson.org/), [QRCode](https://github.com/ricmoo/QRCode),
+  [XPT2046_Touchscreen](https://github.com/PaulStoffregen/XPT2046_Touchscreen)
 
 All display/pin settings are passed as `build_flags` in [`platformio.ini`](platformio.ini) —
 you do **not** need to edit TFT_eSPI's `User_Setup.h`.
@@ -94,6 +95,9 @@ three subpages — saving on any of them reboots the board to apply the change:
 | **`/providers`** | Enable/disable Wiener Linien and ÖBB, set their stops/stations, line and direction filters. Editing any field auto-enables that provider. |
 | **`/system`** | How many departures to show at once (3–4 looks best) and the refresh interval (seconds). |
 
+Don't remember the address? **Tap the screen** — a gear icon appears in the corner; tap it for a
+QR code straight to the config page.
+
 ## Configuration
 
 There is **nothing to configure at build time** — everything lives in the on-device web
@@ -108,16 +112,19 @@ touch if your CYD variant differs (see [Troubleshooting](#troubleshooting)).
 Three decoupled layers handle the live board, plus a small WiFi-provisioning side:
 
 ```
-main.cpp        Orchestration: WiFi connect, NTP, source registry,
-                fetch → merge → sort. Falls back to setup if there's no internet.
-                Knows nothing about TFT or transit APIs.
+main.cpp        Orchestration: WiFi connect, NTP, source registry, fetch → merge
+                → sort, and the on-screen touch UI. Falls back to setup if there's
+                no internet. Knows nothing about TFT or transit APIs.
 
 departures.*    Data layer: the DepartureSource interface and the concrete
                 providers (WienerLinienSource, OebbSource) + HTTP/JSON helpers.
                 Knows nothing about the display.
 
-display.*       Presentation: owns the TFT, the palette, the row renderers and
-                the WiFi-setup screen (incl. the QR). Knows nothing about the network.
+display.*       Presentation: owns the TFT, the palette, the row renderers, the
+                setup/QR screens and the on-board tool button. No network code.
+
+touch.*         Reads the XPT2046 touchscreen on its own SPI bus and reports taps
+                mapped to screen pixels. No display or network code.
 
 portal.*        Web portal: the "Oeffi-Setup" captive portal (first run) and the
                 always-on config page at oeffi.local (with /wifi, /providers and
@@ -175,9 +182,10 @@ Steps 1–2 are all you need if the new provider reuses an existing style.
 ```
 platformio.ini          Board, libraries, TFT_eSPI build flags (only build-time config)
 src/
-  main.cpp              setup()/loop(), WiFi, NTP, source registry, setup fallback
+  main.cpp              setup()/loop(), WiFi, NTP, source registry, touch UI, setup fallback
   departures.h/.cpp     DepartureSource interface + providers + HTTP helpers
-  display.h/.cpp        TFT, palette, row renderers, WiFi-setup screen + QR
+  display.h/.cpp        TFT, palette, row renderers, setup/QR screens + tool button
+  touch.h/.cpp          XPT2046 touchscreen → screen-pixel taps
   portal.h/.cpp         Captive-portal provisioning + oeffi.local config server
   settings.h/.cpp       All user settings store — WiFi, providers, system (ESP32 flash / NVS)
 CLAUDE.md               Architecture notes & gotchas for contributors

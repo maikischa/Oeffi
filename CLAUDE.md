@@ -12,9 +12,10 @@ Inspired by `coppermilk/wiener_linien_esp32_monitor` (built for the LILYGO T-Dis
 
 | Layer | Files | Responsibility |
 |---|---|---|
-| **Orchestration** | `main.cpp` | WiFi, NTP, source registry, fetch/merge/sort loop, **no-internet → setup fallback**. No TFT or API code. |
+| **Orchestration** | `main.cpp` | WiFi, NTP, source registry, fetch/merge/sort loop, the on-board touch UI (`handleUi()`), **no-internet → setup fallback**. No TFT or API code. |
 | **Data / providers** | `departures.h` / `.cpp` | `DepartureSource` interface + concrete sources + HTTP/JSON helpers. No display code. |
-| **Display** | `display.h` / `.cpp` | Owns the `TFT_eSPI`, palette, per-style row renderers, and the WiFi-setup screen (incl. QR via `ricmoo/QRCode`). No network code. |
+| **Display** | `display.h` / `.cpp` | Owns the `TFT_eSPI`, palette, per-style row renderers, the WiFi-setup + settings QR screens, and the on-board tool button (QR via `ricmoo/QRCode`). No network code. |
+| **Touch** | `touch.h` / `.cpp` | XPT2046 resistive touch on its own **HSPI** bus; `touchGetTap()` returns press-edge taps mapped to screen pixels. No display or network code. |
 | **Portal** | `portal.h` / `.cpp` | `WebServer` + captive-portal `DNSServer` + mDNS: the `Oeffi-Setup` provisioning AP and the always-on `oeffi.local` config page (`/wifi`, `/providers`, `/system`). Persists via `settings.*`; no display code. |
 | **Settings** | `settings.h` / `.cpp` | Tiny typed key/value store over NVS (`Preferences`, namespace `oeffi`). Holds **all** user settings (WiFi, providers, board/refresh) — web-portal-only, single source of truth, no config file. |
 
@@ -114,7 +115,7 @@ pio run --target erase && pio run --target upload
 | RGB LED B | 17 (active LOW) |
 | LDR | 34 |
 
-Display driver: **ST7789** (despite the "ILI9341" listing/silkscreen — confirmed via the user's working ESPHome config: `model: ST7789V`, `color_order: bgr`, `invert_colors: false`). 240 × 320 native. Touch controller: **XPT2046** (resistive, not yet used). The two SPI peripherals share the bus at different CS pins.
+Display driver: **ST7789** (despite the "ILI9341" listing/silkscreen — confirmed via the user's working ESPHome config: `model: ST7789V`, `color_order: bgr`, `invert_colors: false`). 240 × 320 native. Touch controller: **XPT2046** (resistive) — driven on its own **HSPI** bus (the touch pins are separate from the display's VSPI pins), see `touch.*`. `touchGetTap()` maps each press to landscape screen pixels (raw→px calibration constants in `touch.cpp`, tune from the `[touch] raw=…` serial log). `main.cpp`'s `handleUi()` uses taps to drive a small on-board UI: a tap surfaces a gear "tool" icon (bottom-right) for ~5 s; tapping it opens a settings screen with a QR to the config page (`http://<sta-ip>/`), which any tap dismisses back to the board.
 
 ## TFT_eSPI configuration
 
@@ -126,7 +127,8 @@ The board runs **landscape** via `tft.setRotation(1)` in `displayInit()` (320 ×
 
 - `src/main.cpp` — `setup()`/`loop()`, WiFi connect, NTP, `registerSources()`, fetch/merge, provisioning + no-internet fallback. No TFT or API code.
 - `src/departures.h` / `.cpp` — `RowStyle`, `Departure`, `DepartureSource` + `WienerLinienSource`/`OebbSource`, `httpGetRaw()`/`httpGetJson()`. No display code.
-- `src/display.h` / `.cpp` — `displayInit/Status/Board/SetupScreen`, the `TFT_eSPI`, palette, `kRenderers[]` style→renderer table, and `drawQr()`. No network code.
+- `src/display.h` / `.cpp` — `displayInit/Status/Board/SetupScreen/SettingsScreen`, the on-board tool icon (`displayShowToolIcon`/`displayToolIconHit`), the `TFT_eSPI`, palette, `kRenderers[]` style→renderer table, and `drawQr()`. No network code.
+- `src/touch.h` / `.cpp` — `touchInit()` / `touchGetTap()`: XPT2046 resistive touch on its own HSPI bus; returns press-edge taps mapped to screen pixels (logs raw+mapped). No display or network code.
 - `src/portal.h` / `.cpp` — `portalStartSetupAP()` / `portalStartConfigServer()` / `portalHandle()`: the `WebServer`/`DNSServer`/mDNS captive portal + config page (`/`, `/wifi`, `/providers`, `/system`). No display code.
 - `src/settings.h` / `.cpp` — NVS-backed settings store (`settingsBegin()`, typed getters/setters, `wifiSsid/Pass`, `setWifiCreds`, `clearWifi`, provider config accessors, `maxRows()`/`refreshIntervalMs()`). The single source of truth — there is no config file.
 - `platformio.ini` — single `[env:cyd]` environment; all TFT/hardware config lives here as `build_flags`; `lib_deps` adds `ricmoo/QRCode`.
